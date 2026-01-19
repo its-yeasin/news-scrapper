@@ -2,25 +2,58 @@ import puppeteer from "puppeteer";
 
 const scrapeArticleDetails = async (page, url) => {
   try {
-    await page.goto(url, { waitUntil: "networkidle2" });
+    await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    // Extract the article details
+    // Wait for hero image container
+    try {
+      await page.waitForSelector(".story-page-hero img", { timeout: 8000 });
+    } catch {}
+
     const articleDetails = await page.evaluate(() => {
       const getText = (selector) =>
         document.querySelector(selector)?.innerText.trim() || null;
 
-      const category = getText(".vXi2j");
-      const title = getText("h1.IiRps");
-      const author = getText(".contributor-name");
-      const location = getText(".author-location");
-      const publishedTime = getText("time span");
-      const content = Array.from(
-        document.querySelectorAll(".story-element.story-element-text p"),
-      )
-        .map((p) => p.innerText.trim())
-        .join("\n");
+      // HERO IMAGE (most reliable)
+      let img =
+        document.querySelector(".story-page-hero img") ||
+        document.querySelector(".qt-figure picture img") ||
+        document.querySelector("figure img");
 
-      return { category, title, author, location, publishedTime, content };
+      let featuredImage = null;
+
+      if (img) {
+        featuredImage =
+          img.src ||
+          img.getAttribute("src") ||
+          img.getAttribute("data-src") ||
+          (img.srcset ? img.srcset.split(" ")[0] : null);
+      }
+
+      // fallback to og:image
+      if (!featuredImage) {
+        const og = document.querySelector('meta[property="og:image"]');
+        if (og) featuredImage = og.content;
+      }
+
+      // fix protocol-less URLs
+      if (featuredImage?.startsWith("//")) {
+        featuredImage = "https:" + featuredImage;
+      }
+
+      // extract content
+      const paragraphs = Array.from(
+        document.querySelectorAll(".story-element.story-element-text p"),
+      ).map((p) => p.innerText.trim());
+
+      return {
+        category: getText(".vXi2j"),
+        title: getText("h1.IiRps"),
+        author: getText(".contributor-name"),
+        location: getText(".author-location"),
+        publishedTime: getText("time span"),
+        featuredImage,
+        content: paragraphs.join("\n"),
+      };
     });
 
     return articleDetails;
