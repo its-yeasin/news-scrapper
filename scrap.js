@@ -15,7 +15,7 @@ const scrapeArticleDetails = async (page, url) => {
       const location = getText(".author-location");
       const publishedTime = getText("time span");
       const content = Array.from(
-        document.querySelectorAll(".story-element.story-element-text p")
+        document.querySelectorAll(".story-element.story-element-text p"),
       )
         .map((p) => p.innerText.trim())
         .join("\n");
@@ -30,33 +30,46 @@ const scrapeArticleDetails = async (page, url) => {
   }
 };
 
-const scrap = async (res) => {
+const scrap = async () => {
   try {
     const browser = await puppeteer.launch({
       headless: true,
       defaultViewport: null,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
 
+    // Navigate to the index page
     await page.goto("https://www.prothomalo.com/", {
       waitUntil: "networkidle2",
     });
 
+    // Extract titles and links
     const newsList = await page.evaluate(() => {
       const articles = [];
+      const seenLinks = new Set(); // Track links we've already added
+
       document.querySelectorAll("a.title-link").forEach((element) => {
         const title = element
           .querySelector(".tilte-no-link-parent")
           ?.innerText.trim();
         const link = element.href;
-        if (title && link) {
+
+        // Only push if title/link exist AND the link hasn't been seen yet
+        if (title && link && !seenLinks.has(link)) {
           articles.push({ title, link });
+          seenLinks.add(link); // Mark this link as seen
         }
       });
+
       return articles;
     });
 
+    console.log("Found articles:", newsList);
+
+    // Loop through each link to get detailed content
     const detailedArticles = [];
     const totalArticles = newsList.length;
 
@@ -70,31 +83,19 @@ const scrap = async (res) => {
         });
       }
 
-      const progress = ((i + 1) / totalArticles) * 100;
+      // Update progress
+      const progress = ((i + 1) / totalArticles) * 100; // Calculate progress percentage by dividing current index by total articles and multiplying by 100
       console.log(`Progress: ${progress.toFixed(2)}%`);
-
-      // Send progress update
-      res.write(`data: ${JSON.stringify({ progress, article })}\n\n`);
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    // Send all collected data after completing the loop
-    res.write(
-      `data: ${JSON.stringify({ progress: 100, detailedArticles })}\n\n`
-    );
-
-    console.log(articles, "articles");
-
-    // End the connection
-    res.end();
-
     await browser.close();
+    return detailedArticles;
+
+    // Optionally close the browser
   } catch (e) {
     console.error("Error:", e);
-    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
-    res.end();
   }
 };
 
 export default scrap;
+// await scrap();
