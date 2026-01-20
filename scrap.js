@@ -45,6 +45,11 @@ const scrapeArticleDetails = async (page, url) => {
         document.querySelectorAll(".story-element.story-element-text p"),
       ).map((p) => p.innerText.trim());
 
+      // 🚫 SKIP ARTICLE IF NO CONTENT
+      if (!paragraphs?.length || paragraphs?.join("").trim()?.length === 0) {
+        return null; // content missing → skip
+      }
+
       return {
         category: getText(".vXi2j"),
         title: getText("h1.IiRps"),
